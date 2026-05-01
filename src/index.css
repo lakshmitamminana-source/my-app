@@ -1,0 +1,36 @@
+:root {
+  --bg: #f7efe2;
+  --bg-accent: #dbeafe;
+  --panel-bg: rgba(255, 250, 242, 0.85);
+  --panel-border: #e8decf;
+  --text: #1f2937;
+  --muted: #5b6472;
+  --brand: #1e3a8a;
+  --sans: 'IBM Plex Sans', 'Trebuchet MS', 'Segoe UI', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  color: var(--text);
+  font: 16px/1.5 var(--sans);
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at 10% -5%, #facc15 0%, rgba(250, 204, 21, 0) 34%),
+    radial-gradient(circle at 88% 0%, #93c5fd 0%, rgba(147, 197, 253, 0) 30%),
+    linear-gradient(180deg, var(--bg) 0%, var(--bg-accent) 100%);
+}
+
+#root {
+  min-height: 100svh;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
