@@ -38,7 +38,7 @@ body {
   box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
   padding: 3rem;
   width: 100%;
-  max-width: 400px;
+  max-width: 420px;
 }
 
 .login-header {
@@ -817,8 +817,4 @@ body {
   }
 }
 
-  .login-panel {
-    padding: 2rem;
-    max-width: 90%;
-  }
-}
+
