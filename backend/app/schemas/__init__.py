@@ -45,6 +45,17 @@ class MessageTurn(BaseModel):
     content: str = Field(min_length=1, max_length=8000)
 
 
+class ChatAttachment(BaseModel):
+    """Attachment payload for rich chat inputs."""
+
+    type: Literal["image", "video", "table", "formula", "code", "pdf"]
+    name: Optional[str] = Field(default=None, max_length=255)
+    mime_type: Optional[str] = Field(default=None, max_length=255)
+    text_content: Optional[str] = Field(default=None)
+    data_url: Optional[str] = Field(default=None, max_length=6000000)
+    language: Optional[str] = Field(default=None, max_length=50)
+
+
 class MessageResponse(BaseModel):
     """Message response."""
 
@@ -52,6 +63,7 @@ class MessageResponse(BaseModel):
     thread_id: uuid.UUID
     role: str
     content: str
+    attachments: list[ChatAttachment] = Field(default_factory=list)
     created_at: datetime
 
     class Config:
@@ -88,11 +100,13 @@ class ChatRequest(BaseModel):
 
     message: str = Field(min_length=1, max_length=8000)
     history: list[MessageTurn] = Field(default_factory=list)
+    attachments: list[ChatAttachment] = Field(default_factory=list)
 
 
 class ChatResponse(BaseModel):
     """Chat response."""
 
     answer: str
+    assistant_attachments: list[ChatAttachment] = Field(default_factory=list)
     message_id: Optional[uuid.UUID] = None
     thread_title: Optional[str] = None

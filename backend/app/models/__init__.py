@@ -1,4 +1,5 @@
 """SQLAlchemy ORM models."""
+import json
 import uuid
 from datetime import datetime, timezone
 from typing import Optional
@@ -78,11 +79,23 @@ class Message(Base):
     )
     role: Mapped[str] = mapped_column(String(50), nullable=False)  # "user" or "assistant"
     content: Mapped[str] = mapped_column(Text, nullable=False)
+    attachments_json: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False
     )
 
     thread: Mapped[Thread] = relationship("Thread", back_populates="messages")
+
+    @property
+    def attachments(self) -> list[dict]:
+        """Return parsed attachments stored in attachments_json."""
+        if not self.attachments_json:
+            return []
+        try:
+            parsed = json.loads(self.attachments_json)
+            return parsed if isinstance(parsed, list) else []
+        except (json.JSONDecodeError, TypeError):
+            return []
 
     def __repr__(self) -> str:
         return f"<Message(id={self.id}, role={self.role})>"

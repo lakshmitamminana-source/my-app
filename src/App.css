@@ -196,6 +196,9 @@ body {
 .chat-layout {
   display: flex;
   height: 100vh;
+  width: 100vw;
+  max-width: 100vw;
+  overflow-x: hidden;
   background: white;
 }
 
@@ -406,7 +409,6 @@ body {
   text-align: center;
   font-weight: 500;
 }
-}
 
 .thread-action-button {
   width: 30px;
@@ -518,6 +520,58 @@ body {
   flex: 1;
 }
 
+.header-user-block {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  max-width: 320px;
+  color: #4b5563;
+  font-size: 0.9rem;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.header-welcome {
+  font-weight: 600;
+}
+
+.header-user-email {
+  color: #1f2937;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.logout-icon-button {
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fff1f2;
+  color: #dc2626;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.logout-icon-button svg {
+  width: 18px;
+  height: 18px;
+}
+
+.logout-icon-button:hover {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  color: #b91c1c;
+}
+
+.logout-icon-button:focus-visible {
+  outline: 2px solid #ef4444;
+  outline-offset: 2px;
+}
+
 .header-title h1 {
   font-size: 1.5rem;
   color: #1f2937;
@@ -619,6 +673,14 @@ body {
   margin: 0.25rem 0;
 }
 
+.bubble .content img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  border-radius: 10px;
+  margin: 0.75rem 0;
+}
+
 .bubble .content code {
   background: rgba(0, 0, 0, 0.08);
   padding: 0.25rem 0.5rem;
@@ -632,14 +694,63 @@ body {
   color: #e5e7eb;
   padding: 1.25rem;
   border-radius: 8px;
-  overflow-x: auto;
   margin: 0.75rem 0;
   line-height: 1.4;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  white-space: pre-wrap;
+  max-width: 100%;
 }
 
 .bubble .content pre code {
   background: none;
   padding: 0;
+}
+
+.message-attachments {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.attachment-card {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.65);
+  padding: 0.65rem;
+}
+
+.attachment-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: #334155;
+  margin-bottom: 0.4rem;
+  letter-spacing: 0.04em;
+}
+
+.attachment-image,
+.attachment-video {
+  width: 100%;
+  max-height: 260px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #0f172a;
+}
+
+.attachment-code-block {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  background: #111827;
+  color: #f8fafc;
+  border-radius: 8px;
+  padding: 0.75rem;
+  font-size: 0.84rem;
+  line-height: 1.4;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 .typing {
@@ -670,11 +781,115 @@ body {
 /* Composer */
 .composer {
   display: flex;
-  gap: 1rem;
+  flex-direction: column;
+  gap: 0.75rem;
   padding: 1.5rem;
   border-top: 1px solid #e5e7eb;
+  border-left: 2px solid transparent;
+  border-right: 2px solid transparent;
+  border-bottom: 2px solid transparent;
   background: white;
   box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.04);
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.composer.drag-active {
+  border-color: #6366f1;
+  background: #eef2ff;
+}
+
+.attachment-input {
+  display: none;
+}
+
+.attachment-action-button {
+  border: 1px solid #cbd5e1;
+  background: #f8fafc;
+  color: #334155;
+  border-radius: 8px;
+  padding: 0.45rem 0.7rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.attachment-action-button:hover:not(:disabled) {
+  background: #eef2ff;
+  border-color: #a5b4fc;
+}
+
+.attachment-action-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.attach-files-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border: 2px solid #667eea;
+  background: #f8fafc;
+  color: #667eea;
+  border-radius: 8px;
+  font-size: 1.5rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  line-height: 1;
+}
+
+.attach-files-icon-button:hover:not(:disabled) {
+  background: #667eea;
+  color: white;
+}
+
+.attach-files-icon-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.pending-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.pending-attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 1px solid #d1d5db;
+  background: #f8fafc;
+  color: #374151;
+  border-radius: 999px;
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+.remove-attachment-button {
+  border: none;
+  background: transparent;
+  color: #b91c1c;
+  cursor: pointer;
+  font-size: 0.85rem;
+  line-height: 1;
+}
+
+.drop-help-text {
+  margin: 0;
+  color: #4338ca;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.composer-input-row {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  gap: 0.75rem;
 }
 
 .composer-textarea {
@@ -719,6 +934,7 @@ body {
   transition: all 0.2s ease;
   box-shadow: 0 4px 6px rgba(102, 126, 234, 0.2);
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .composer-button:hover:not(:disabled) {
@@ -769,6 +985,11 @@ body {
     padding: 1rem 1.25rem;
   }
 
+  .header-user-block {
+    max-width: 180px;
+    font-size: 0.82rem;
+  }
+
   .composer {
     padding: 1rem;
     gap: 0.75rem;
@@ -812,9 +1033,77 @@ body {
     font-size: 1.25rem;
   }
 
+  .header-welcome {
+    display: none;
+  }
+
+  .header-user-block {
+    max-width: 140px;
+  }
+
   .sidebar-header h2 {
     font-size: 1.1rem;
   }
+}
+
+.attachment-table-container {
+  max-height: 400px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 6px;
+  background: #f8fafc;
+  width: 100%;
+}
+
+.attachment-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.attachment-table thead {
+  background: #f1f5f9;
+  position: sticky;
+  top: 0;
+}
+
+.attachment-table th {
+  padding: 0.75rem;
+  text-align: left;
+  font-weight: 600;
+  color: #1e293b;
+  border-bottom: 2px solid #cbd5e1;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  max-width: 150px;
+}
+
+.attachment-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #e2e8f0;
+  color: #475569;
+  word-break: break-word;
+}
+
+.attachment-table tbody tr:hover {
+  background: #f1f5f9;
+}
+
+.attachment-error {
+  padding: 12px;
+  background: #fee2e2;
+  border: 1px solid #fca5a5;
+  border-radius: 6px;
+  color: #991b1b;
+  font-size: 0.875rem;
+}
+
+.attachment-error p {
+  margin: 0 0 4px 0;
+}
+
+.attachment-error p:last-child {
+  margin-bottom: 0;
 }
 
 

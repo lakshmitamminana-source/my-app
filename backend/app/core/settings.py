@@ -34,6 +34,9 @@ class Settings:
     LITELLM_EMBEDDING_MODEL: str = os.getenv(
         "LITELLM_EMBEDDING_MODEL", "text-embedding-3-large"
     )
+    IMAGE_GEN_MODEL: str = os.getenv(
+        "IMAGE_GEN_MODEL", "gemini/imagen-4.0-fast-generate-001"
+    )
     LITELLM_TIMEOUT_SECONDS: float = float(os.getenv("LITELLM_TIMEOUT_SECONDS", "20"))
     LITELLM_HARD_TIMEOUT_SECONDS: float = float(
         os.getenv("LITELLM_HARD_TIMEOUT_SECONDS", "25")
@@ -45,6 +48,10 @@ class Settings:
         "SYSTEM_PROMPT", "You are a concise, helpful assistant. Provide clear and actionable answers."
     )
     CONVERSATION_MEMORY_WINDOW: int = int(os.getenv("CONVERSATION_MEMORY_WINDOW", "5"))
+
+    # RAG / Chroma
+    CHROMA_PERSIST_DIR: str = os.getenv("CHROMA_PERSIST_DIR", "./chroma_db")
+    RAG_TOP_K: int = int(os.getenv("RAG_TOP_K", "5"))
 
     # Google OAuth (optional)
     GOOGLE_CLIENT_ID: Optional[str] = os.getenv("GOOGLE_CLIENT_ID")
