@@ -315,6 +315,363 @@ export function useChat() {
     }
   }, [])
 
+  const saveDbConnection = useCallback(async ({ label, databaseUrl, threadId = null }) => {
+    try {
+      const response = await fetch(`${API_BASE}/tools/db-connections`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          label,
+          database_url: databaseUrl,
+          thread_id: threadId,
+        }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        const detailMessage = data?.detail?.message || data?.detail || 'Failed to save database connection'
+        throw new Error(detailMessage)
+      }
+      return data
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to save database connection'
+      setError(msg)
+      throw err
+    }
+  }, [])
+
+  const listDbConnections = useCallback(async (threadId = null) => {
+    try {
+      const query = threadId ? `?thread_id=${encodeURIComponent(threadId)}` : ''
+      const response = await fetch(`${API_BASE}/tools/db-connections${query}`, {
+        credentials: 'include',
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        const detailMessage = data?.detail?.message || data?.detail || 'Failed to load database connections'
+        throw new Error(detailMessage)
+      }
+      return data
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load database connections'
+      setError(msg)
+      throw err
+    }
+  }, [])
+
+  // Query a connected database using natural language
+  const queryDatabase = useCallback(async ({ databaseUrl = null, connectionId = null, question }) => {
+    try {
+      const response = await fetch(`${API_BASE}/tools/query-db`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          database_url: databaseUrl,
+          connection_id: connectionId,
+          question,
+        }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        const detailMessage = data?.detail?.message || data?.detail || 'Failed to query database'
+        throw new Error(detailMessage)
+      }
+
+      return data
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to query database'
+      setError(msg)
+      throw err
+    }
+  }, [])
+
+  const loadGoogleSheet = useCallback(async (sheetUrlOrId) => {
+    try {
+      const response = await fetch(`${API_BASE}/tools/google-sheets/load`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ sheet_url_or_id: sheetUrlOrId }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        const detailMessage = data?.detail?.message || data?.detail || 'Failed to load Google Sheet'
+        throw new Error(detailMessage)
+      }
+      return data
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to load Google Sheet'
+      setError(msg)
+      throw err
+    }
+  }, [])
+
+  const askGoogleSheetQuestion = useCallback(async ({ sheetUrlOrId, question }) => {
+    try {
+      const response = await fetch(`${API_BASE}/tools/google-sheets/ask`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          sheet_url_or_id: sheetUrlOrId,
+          question,
+        }),
+      })
+
+      const data = await response.json()
+      if (!response.ok) {
+        const detailMessage = data?.detail?.message || data?.detail || 'Failed to ask Google Sheet question'
+        throw new Error(detailMessage)
+      }
+      return data
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to ask Google Sheet question'
+      setError(msg)
+      throw err
+    }
+  }, [])
+
+  const uploadLocalFile = useCallback(async (file) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    try {
+      const response = await fetch(`${API_BASE}/tools/upload-local-file`, {
+        method: 'POST',
+        credentials: 'include',
+        body: formData,
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        const detailMessage = data?.detail?.message || data?.detail || 'Failed to upload file'
+        throw new Error(detailMessage)
+      }
+      return data
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to upload file'
+      setError(msg)
+      throw err
+    }
+  }, [])
+
+  const queryLocalFile = useCallback(async ({ filePath, sourceType, question }) => {
+    try {
+      const response = await fetch(`${API_BASE}/tools/dataframe-query`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          source_type: sourceType,
+          source: filePath,
+          question,
+        }),
+      })
+      const data = await response.json()
+      if (!response.ok) {
+        const detailMessage = data?.detail?.message || data?.detail || 'Failed to query file'
+        throw new Error(detailMessage)
+      }
+      return data
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to query file'
+      setError(msg)
+      throw err
+    }
+  }, [])
+
+  const startResearchDigestStream = useCallback(
+    ({ topic, maxIterations = 3, papersPerIteration = 4, onProgress, onComplete, onError }) => {
+      const params = new URLSearchParams({
+        topic,
+        max_iterations: String(maxIterations),
+        papers_per_iteration: String(papersPerIteration),
+      })
+
+      const controller = new AbortController()
+      let closed = false
+
+      onProgress?.({
+        phase: 'search',
+        message: 'Connecting to research stream...',
+        iteration: 0,
+        progress: 0.01,
+        details: { source: 'client' },
+      })
+
+      const parseSseBlock = (block) => {
+        const lines = block.split('\n')
+        let eventName = 'message'
+        const dataLines = []
+
+        for (const line of lines) {
+          if (!line || line.startsWith(':')) continue
+          if (line.startsWith('event:')) {
+            eventName = line.slice(6).trim() || 'message'
+            continue
+          }
+          if (line.startsWith('data:')) {
+            dataLines.push(line.slice(5).trim())
+          }
+        }
+
+        return { eventName, data: dataLines.join('\n') }
+      }
+
+      const dispatchSseBlock = (block) => {
+        const { eventName, data } = parseSseBlock(block)
+        if (eventName === 'ping') return false
+
+        if (eventName === 'progress') {
+          try {
+            onProgress?.(JSON.parse(data || '{}'))
+          } catch {
+            onProgress?.({ phase: 'progress', message: data || 'Progress update', progress: 0 })
+          }
+          return false
+        }
+
+        if (eventName === 'complete') {
+          try {
+            onComplete?.(JSON.parse(data || '{}'))
+          } catch {
+            onError?.('Failed to parse final digest payload')
+          }
+          closed = true
+          controller.abort()
+          return true
+        }
+
+        if (eventName === 'error') {
+          try {
+            const parsed = JSON.parse(data || '{}')
+            onError?.(parsed?.message || 'Research digest stream failed')
+          } catch {
+            onError?.(data || 'Research digest stream failed')
+          }
+          closed = true
+          controller.abort()
+          return true
+        }
+
+        return false
+      }
+
+      ;(async () => {
+        try {
+          const response = await fetch(`${API_BASE}/tools/research-digest/stream?${params.toString()}`, {
+            method: 'GET',
+            credentials: 'include',
+            headers: {
+              Accept: 'text/event-stream',
+            },
+            signal: controller.signal,
+          })
+
+          if (!response.ok) {
+            let message = `Research digest stream failed (${response.status})`
+            try {
+              const data = await response.json()
+              message = data?.detail?.message || data?.detail || message
+            } catch {
+              const text = await response.text().catch(() => '')
+              if (text) message = text.slice(0, 300)
+            }
+            onError?.(message)
+            return
+          }
+
+          onProgress?.({
+            phase: 'search',
+            message: 'Connected. Waiting for server progress events...',
+            iteration: 0,
+            progress: 0.03,
+            details: { source: 'client' },
+          })
+
+          if (!response.body) {
+            onError?.('Research digest stream failed: empty stream body')
+            return
+          }
+
+          const reader = response.body.getReader()
+          const decoder = new TextDecoder('utf-8')
+          let buffer = ''
+
+          while (!closed) {
+            const { done, value } = await reader.read()
+            if (done) {
+              const trailing = buffer.trim()
+              if (trailing) {
+                dispatchSseBlock(trailing)
+              }
+              break
+            }
+
+            // Normalize any CRLF/CR variants to LF so SSE block splitting stays reliable
+            // even when CR/LF pairs are split across network chunks.
+            buffer += decoder.decode(value, { stream: true })
+            buffer = buffer.replace(/\r\n/g, '\n').replace(/\r/g, '\n')
+
+            let separatorIndex = buffer.indexOf('\n\n')
+            while (separatorIndex !== -1) {
+              const block = buffer.slice(0, separatorIndex)
+              buffer = buffer.slice(separatorIndex + 2)
+
+              if (dispatchSseBlock(block)) {
+                return
+              }
+
+              separatorIndex = buffer.indexOf('\n\n')
+            }
+          }
+        } catch (err) {
+          if (closed || err?.name === 'AbortError') return
+          const message = err instanceof Error ? err.message : 'Research digest stream failed'
+          onError?.(message)
+        }
+      })()
+
+      return {
+        close: () => {
+          closed = true
+          controller.abort()
+        },
+      }
+    },
+    []
+  )
+
+  const exportResearchDigestPdf = useCallback(async (digest) => {
+    try {
+      const digestForExport = {
+        ...digest,
+        visualizations: [],
+      }
+
+      const response = await fetch(`${API_BASE}/tools/research-digest/export-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ digest: digestForExport }),
+      })
+
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}))
+        const detailMessage = data?.detail?.message || data?.detail || 'Failed to export digest PDF'
+        throw new Error(detailMessage)
+      }
+
+      return await response.blob()
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to export digest PDF'
+      setError(msg)
+      throw err
+    }
+  }, [])
+
   return {
     threads,
     activeThreadId,
@@ -325,6 +682,15 @@ export function useChat() {
     loadThread,
     createThread,
     sendMessage,
+    saveDbConnection,
+    listDbConnections,
+    queryDatabase,
+    loadGoogleSheet,
+    askGoogleSheetQuestion,
+    uploadLocalFile,
+    queryLocalFile,
+    startResearchDigestStream,
+    exportResearchDigestPdf,
     deleteThread,
     updateThread,
     setError,

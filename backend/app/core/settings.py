@@ -57,6 +57,19 @@ class Settings:
     GOOGLE_CLIENT_ID: Optional[str] = os.getenv("GOOGLE_CLIENT_ID")
     GOOGLE_CLIENT_SECRET: Optional[str] = os.getenv("GOOGLE_CLIENT_SECRET")
     GOOGLE_REDIRECT_URI: Optional[str] = os.getenv("GOOGLE_REDIRECT_URI")
+    GOOGLE_SERVICE_ACCOUNT_JSON: Optional[str] = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON")
+    GOOGLE_SHEET_ID: Optional[str] = os.getenv("GOOGLE_SHEET_ID")
+
+    # File uploads
+    UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", "./uploads")
+    MAX_UPLOAD_MB: int = int(os.getenv("MAX_UPLOAD_MB", "20"))
+
+    # Accepted MIME types for local-file dataframe tool
+    ALLOWED_DATAFRAME_MIME_TYPES: tuple[str, ...] = (
+        "text/csv",
+        "application/vnd.ms-excel",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 settings = Settings()

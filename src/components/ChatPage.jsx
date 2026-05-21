@@ -3,6 +3,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import ReactMarkdown, { defaultUrlTransform } from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { useChat } from '../hooks/useChat'
 
 export default function ChatPage({ user, onLogout }) {
@@ -23,6 +24,15 @@ export default function ChatPage({ user, onLogout }) {
     loadThread,
     createThread,
     sendMessage,
+    saveDbConnection,
+    listDbConnections,
+    queryDatabase,
+    loadGoogleSheet,
+    askGoogleSheetQuestion,
+    uploadLocalFile,
+    queryLocalFile,
+    startResearchDigestStream,
+    exportResearchDigestPdf,
     deleteThread,
     updateThread,
     setError,
@@ -34,6 +44,36 @@ export default function ChatPage({ user, onLogout }) {
   const [editingThreadId, setEditingThreadId] = useState(null)
   const [editingTitle, setEditingTitle] = useState('')
   const [isSavingTitle, setIsSavingTitle] = useState(false)
+  const [activeTool, setActiveTool] = useState(null)
+  const [dbUrl, setDbUrl] = useState('')
+  const [dbConnectionLabel, setDbConnectionLabel] = useState('')
+  const [dbConnections, setDbConnections] = useState([])
+  const [selectedConnectionId, setSelectedConnectionId] = useState('')
+  const [dbQuestion, setDbQuestion] = useState('')
+  const [dbQueryResult, setDbQueryResult] = useState(null)
+  const [isDbQueryLoading, setIsDbQueryLoading] = useState(false)
+  const [isSavingDbConnection, setIsSavingDbConnection] = useState(false)
+  const [isLoadingDbConnections, setIsLoadingDbConnections] = useState(false)
+  const [sheetUrlOrId, setSheetUrlOrId] = useState('')
+  const [sheetQuestion, setSheetQuestion] = useState('')
+  const [sheetAnswer, setSheetAnswer] = useState('')
+  const [sheetPreview, setSheetPreview] = useState(null)
+  const [isSheetLoading, setIsSheetLoading] = useState(false)
+  const [isSheetQuestionLoading, setIsSheetQuestionLoading] = useState(false)
+  const [sheetTab, setSheetTab] = useState('google') // 'google' | 'local'
+  const [localFile, setLocalFile] = useState(null) // { path, filename, source_type, row_count, columns, rows }
+  const [isLocalFileUploading, setIsLocalFileUploading] = useState(false)
+  const [localFileQuestion, setLocalFileQuestion] = useState('')
+  const [localFileAnswer, setLocalFileAnswer] = useState('')
+  const [isLocalFileQuerying, setIsLocalFileQuerying] = useState(false)
+  const [researchTopic, setResearchTopic] = useState('')
+  const [isResearchRunning, setIsResearchRunning] = useState(false)
+  const [researchProgress, setResearchProgress] = useState([])
+  const [researchDigest, setResearchDigest] = useState(null)
+  const [isExportingResearchPdf, setIsExportingResearchPdf] = useState(false)
+  const [isExportingResearchBibtex, setIsExportingResearchBibtex] = useState(false)
+  const localFileInputRef = useRef(null)
+  const researchEventSourceRef = useRef(null)
   const [pendingAttachments, setPendingAttachments] = useState([])
   const [isReadingAttachments, setIsReadingAttachments] = useState(false)
   const [isDragActive, setIsDragActive] = useState(false)
@@ -330,6 +370,15 @@ export default function ChatPage({ user, onLogout }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
+  useEffect(() => {
+    return () => {
+      if (researchEventSourceRef.current) {
+        researchEventSourceRef.current.close()
+        researchEventSourceRef.current = null
+      }
+    }
+  }, [])
+
   const handleNewChat = async () => {
     setError('')
     setIsCreatingThread(true)
@@ -344,6 +393,9 @@ export default function ChatPage({ user, onLogout }) {
 
   const handleSelectThread = (threadId) => {
     loadThread(threadId)
+    if (activeTool === 'query-db') {
+      loadSavedConnections()
+    }
   }
 
   const handleDeleteThread = async (e, threadId) => {
@@ -413,6 +465,292 @@ export default function ChatPage({ user, onLogout }) {
     }
   }
 
+  const handleOpenQueryDbTool = () => {
+    if (researchEventSourceRef.current) {
+      researchEventSourceRef.current.close()
+      researchEventSourceRef.current = null
+      setIsResearchRunning(false)
+    }
+    setActiveTool('query-db')
+    setError('')
+    loadSavedConnections()
+  }
+
+  const handleOpenGoogleSheetsTool = () => {
+    if (researchEventSourceRef.current) {
+      researchEventSourceRef.current.close()
+      researchEventSourceRef.current = null
+      setIsResearchRunning(false)
+    }
+    setActiveTool('google-sheets')
+    setError('')
+  }
+
+  const handleOpenResearchDigestTool = () => {
+    setActiveTool('research-digest')
+    setError('')
+  }
+
+  const handleCloseToolPanel = () => {
+    if (researchEventSourceRef.current) {
+      researchEventSourceRef.current.close()
+      researchEventSourceRef.current = null
+      setIsResearchRunning(false)
+    }
+    setActiveTool(null)
+  }
+
+  const handleStartResearchDigest = (e) => {
+    e.preventDefault()
+    if (!researchTopic.trim()) {
+      setError('Research topic is required.')
+      return
+    }
+
+    if (researchEventSourceRef.current) {
+      researchEventSourceRef.current.close()
+      researchEventSourceRef.current = null
+    }
+
+    setError('')
+    setResearchDigest(null)
+    setResearchProgress([])
+    setIsResearchRunning(true)
+
+    const source = startResearchDigestStream({
+      topic: researchTopic.trim(),
+      maxIterations: 3,
+      papersPerIteration: 4,
+      onProgress: (event) => {
+        setResearchProgress((prev) => [...prev, event])
+      },
+      onComplete: (digest) => {
+        setResearchDigest(digest)
+        setIsResearchRunning(false)
+        researchEventSourceRef.current = null
+      },
+      onError: (message) => {
+        setError(message || 'Research digest failed')
+        setIsResearchRunning(false)
+        researchEventSourceRef.current = null
+      },
+    })
+
+    researchEventSourceRef.current = source
+  }
+
+  const handleStopResearchDigest = () => {
+    if (researchEventSourceRef.current) {
+      researchEventSourceRef.current.close()
+      researchEventSourceRef.current = null
+    }
+    setIsResearchRunning(false)
+  }
+
+  const handleExportResearchPdf = async () => {
+    if (!researchDigest) return
+
+    setIsExportingResearchPdf(true)
+    setError('')
+    try {
+      const blob = await exportResearchDigestPdf(researchDigest)
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `research_digest_${Date.now()}.pdf`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } catch {
+      // Error text is already set by hook
+    } finally {
+      setIsExportingResearchPdf(false)
+    }
+  }
+
+  const handleExportResearchBibtex = () => {
+    if (!researchDigest?.citations?.length) return
+    setIsExportingResearchBibtex(true)
+    try {
+      const bibtex = researchDigest.citations
+        .map((citation) => citation.bibtex_entry || '')
+        .filter(Boolean)
+        .join('\n\n')
+
+      if (!bibtex.trim()) {
+        setError('No BibTeX entries available for export.')
+        return
+      }
+
+      const blob = new Blob([bibtex], { type: 'application/x-bibtex;charset=utf-8' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `research_digest_${Date.now()}.bib`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+    } finally {
+      setIsExportingResearchBibtex(false)
+    }
+  }
+
+  const handleSubmitDbQuery = async (e) => {
+    e.preventDefault()
+    if (!dbQuestion.trim()) {
+      setError('Question is required for Query DB.')
+      return
+    }
+    if (!selectedConnectionId && !dbUrl.trim()) {
+      setError('Select a saved connection or provide a database URL.')
+      return
+    }
+
+    setIsDbQueryLoading(true)
+    setError('')
+    try {
+      const result = await queryDatabase({
+        connectionId: selectedConnectionId || null,
+        databaseUrl: selectedConnectionId ? null : dbUrl.trim(),
+        question: dbQuestion.trim(),
+      })
+      setDbQueryResult(result)
+    } catch {
+      setDbQueryResult(null)
+    } finally {
+      setIsDbQueryLoading(false)
+    }
+  }
+
+  const loadSavedConnections = async () => {
+    setIsLoadingDbConnections(true)
+    try {
+      const items = await listDbConnections(activeThreadId || null)
+      setDbConnections(items)
+    } catch {
+      setDbConnections([])
+    } finally {
+      setIsLoadingDbConnections(false)
+    }
+  }
+
+  const handleSaveDbConnection = async (e) => {
+    e.preventDefault()
+    if (!dbConnectionLabel.trim() || !dbUrl.trim()) {
+      setError('Connection name and database URL are required to save.')
+      return
+    }
+
+    setIsSavingDbConnection(true)
+    setError('')
+    try {
+      const saved = await saveDbConnection({
+        label: dbConnectionLabel.trim(),
+        databaseUrl: dbUrl.trim(),
+        threadId: activeThreadId || null,
+      })
+      setDbConnections((prev) => [saved, ...prev.filter((item) => item.id !== saved.id)])
+      setSelectedConnectionId(saved.id)
+      setDbConnectionLabel('')
+      setDbUrl('')
+    } finally {
+      setIsSavingDbConnection(false)
+    }
+  }
+
+  const handleLoadGoogleSheet = async (e) => {
+    e.preventDefault()
+    if (!sheetUrlOrId.trim()) {
+      setError('Google Sheet URL or ID is required.')
+      return
+    }
+
+    setIsSheetLoading(true)
+    setError('')
+    try {
+      const preview = await loadGoogleSheet(sheetUrlOrId.trim())
+      setSheetPreview(preview)
+      setSheetAnswer('')
+    } catch {
+      setSheetPreview(null)
+    } finally {
+      setIsSheetLoading(false)
+    }
+  }
+
+  const handleAskGoogleSheet = async (e) => {
+    e.preventDefault()
+    if (!sheetUrlOrId.trim()) {
+      setError('Load a Google Sheet first by URL or ID.')
+      return
+    }
+    if (!sheetQuestion.trim()) {
+      setError('Question is required for Google Sheets tool.')
+      return
+    }
+
+    setIsSheetQuestionLoading(true)
+    setError('')
+    try {
+      const result = await askGoogleSheetQuestion({
+        sheetUrlOrId: sheetUrlOrId.trim(),
+        question: sheetQuestion.trim(),
+      })
+      setSheetAnswer(result.answer || '')
+      setSheetPreview({
+        row_count: result.row_count,
+        columns: result.columns || [],
+        rows: result.rows || [],
+      })
+    } catch {
+      setSheetAnswer('')
+    } finally {
+      setIsSheetQuestionLoading(false)
+    }
+  }
+
+  const handleBrowseLocalFile = (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setIsLocalFileUploading(true)
+    setLocalFile(null)
+    setLocalFileAnswer('')
+    setError('')
+    uploadLocalFile(file)
+      .then((result) => setLocalFile(result))
+      .catch(() => setLocalFile(null))
+      .finally(() => setIsLocalFileUploading(false))
+  }
+
+  const handleAskLocalFile = async (e) => {
+    e.preventDefault()
+    if (!localFile) {
+      setError('Upload a file first using the Browse button.')
+      return
+    }
+    if (!localFileQuestion.trim()) {
+      setError('Question is required.')
+      return
+    }
+    setIsLocalFileQuerying(true)
+    setError('')
+    try {
+      const result = await queryLocalFile({
+        filePath: localFile.path,
+        sourceType: localFile.source_type,
+        question: localFileQuestion.trim(),
+      })
+      setLocalFileAnswer(result.answer || '')
+      setLocalFile((prev) => ({ ...prev, rows: result.rows || [], columns: result.columns || [], row_count: result.row_count }))
+    } catch {
+      setLocalFileAnswer('')
+    } finally {
+      setIsLocalFileQuerying(false)
+    }
+  }
+
   const parseCSV = (csvText) => {
     // Handle both string and object inputs
     let text = csvText
@@ -439,6 +777,12 @@ export default function ChatPage({ user, onLogout }) {
       rows: rows.slice(1),
     }
   }
+
+  const latestResearchProgress = researchProgress.length ? researchProgress[researchProgress.length - 1] : null
+  const researchProgressPercent = Math.max(
+    0,
+    Math.min(100, Math.round(((latestResearchProgress?.progress ?? (isResearchRunning ? 0.05 : 0)) * 100)))
+  )
 
   const renderAttachmentPreview = (attachment) => {
     try {
@@ -662,6 +1006,31 @@ export default function ChatPage({ user, onLogout }) {
           )}
         </div>
 
+        <div className="sidebar-tools">
+          <h3>Tools</h3>
+          <button
+            type="button"
+            className={`tool-item ${activeTool === 'query-db' ? 'active' : ''}`}
+            onClick={handleOpenQueryDbTool}
+          >
+            Query DB
+          </button>
+          <button
+            type="button"
+            className={`tool-item ${activeTool === 'google-sheets' ? 'active' : ''}`}
+            onClick={handleOpenGoogleSheetsTool}
+          >
+            Google Sheets
+          </button>
+          <button
+            type="button"
+            className={`tool-item ${activeTool === 'research-digest' ? 'active' : ''}`}
+            onClick={handleOpenResearchDigestTool}
+          >
+            Research Digest
+          </button>
+        </div>
+
       </aside>
 
       {/* Main Chat Area */}
@@ -701,6 +1070,515 @@ export default function ChatPage({ user, onLogout }) {
         </div>
 
         <div className="messages-container" role="log" aria-live="polite">
+          {activeTool === 'query-db' ? (
+            <section className="tool-panel" aria-label="Query DB tool panel">
+              <div className="tool-panel-header">
+                <h2>Query DB</h2>
+                <button type="button" className="tool-close-button" onClick={handleCloseToolPanel}>
+                  Close
+                </button>
+              </div>
+              <p className="tool-panel-description">
+                Connect to a database and ask questions in natural language. It supports questions that are typically asked as SQL statements.
+              </p>
+              <form className="tool-panel-form" onSubmit={handleSubmitDbQuery}>
+                <label htmlFor="db-connection-select">Saved Connections</label>
+                <div className="tool-inline-row">
+                  <select
+                    id="db-connection-select"
+                    value={selectedConnectionId}
+                    onChange={(e) => setSelectedConnectionId(e.target.value)}
+                    disabled={isDbQueryLoading || isLoadingDbConnections}
+                  >
+                    <option value="">Use direct URL</option>
+                    {dbConnections.map((connection) => (
+                      <option key={connection.id} value={connection.id}>
+                        {connection.label} ({connection.masked_url})
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    className="tool-secondary-button"
+                    onClick={loadSavedConnections}
+                    disabled={isLoadingDbConnections || isDbQueryLoading}
+                  >
+                    {isLoadingDbConnections ? 'Loading...' : 'Refresh'}
+                  </button>
+                </div>
+
+                <label htmlFor="db-connection-label-input">Connection Name</label>
+                <input
+                  id="db-connection-label-input"
+                  type="text"
+                  placeholder="Example: Production Analytics"
+                  value={dbConnectionLabel}
+                  onChange={(e) => setDbConnectionLabel(e.target.value)}
+                  disabled={isSavingDbConnection || isDbQueryLoading}
+                />
+
+                <label htmlFor="db-url-input">Database URL</label>
+                <input
+                  id="db-url-input"
+                  type="text"
+                  placeholder="postgresql+psycopg2://user:password@host:5432/dbname"
+                  value={dbUrl}
+                  onChange={(e) => setDbUrl(e.target.value)}
+                  disabled={isDbQueryLoading || !!selectedConnectionId}
+                />
+
+                <button
+                  type="button"
+                  className="tool-secondary-button"
+                  onClick={handleSaveDbConnection}
+                  disabled={
+                    isSavingDbConnection ||
+                    isDbQueryLoading ||
+                    !dbConnectionLabel.trim() ||
+                    !dbUrl.trim()
+                  }
+                >
+                  {isSavingDbConnection ? 'Saving...' : 'Save Connection'}
+                </button>
+
+                <label htmlFor="db-question-input">Question</label>
+                <textarea
+                  id="db-question-input"
+                  rows={3}
+                  placeholder="Example: What are the top 5 threads created this week?"
+                  value={dbQuestion}
+                  onChange={(e) => setDbQuestion(e.target.value)}
+                  disabled={isDbQueryLoading}
+                />
+
+                <button type="submit" disabled={isDbQueryLoading} className="tool-submit-button">
+                  {isDbQueryLoading ? 'Running...' : 'Run Query'}
+                </button>
+              </form>
+
+              {dbQueryResult ? (
+                <div className="tool-result">
+                  <h3>Answer</h3>
+                  <div className="tool-answer-markdown">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={markdownUrlTransform}>{dbQueryResult.answer}</ReactMarkdown>
+                  </div>
+                  <h3>Generated SQL</h3>
+                  <pre>{dbQueryResult.sql}</pre>
+                  <h3>Rows ({dbQueryResult.row_count})</h3>
+                  {Array.isArray(dbQueryResult.rows) && dbQueryResult.rows.length > 0 ? (
+                    <div className="tool-table-wrapper">
+                      <table className="tool-table-preview">
+                        <thead>
+                          <tr>
+                            {(dbQueryResult.columns || []).map((column) => (
+                              <th key={column}>{column}</th>
+                            ))}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {dbQueryResult.rows.slice(0, 20).map((row, rowIdx) => (
+                            <tr key={rowIdx}>
+                              {(dbQueryResult.columns || []).map((column) => (
+                                <td key={`${rowIdx}-${column}`}>{String(row?.[column] ?? '')}</td>
+                              ))}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ) : (
+                    <p>No rows returned.</p>
+                  )}
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          {activeTool === 'google-sheets' ? (
+            <section className="tool-panel" aria-label="Google Sheets tool panel">
+              <div className="tool-panel-header">
+                <h2>Google Sheets &amp; Local Files</h2>
+                <button type="button" className="tool-close-button" onClick={handleCloseToolPanel}>
+                  Close
+                </button>
+              </div>
+
+              {/* Tab switcher */}
+              <div className="tool-tabs">
+                <button
+                  type="button"
+                  className={`tool-tab ${sheetTab === 'google' ? 'active' : ''}`}
+                  onClick={() => { setSheetTab('google'); setError('') }}
+                >
+                  Google Sheet
+                </button>
+                <button
+                  type="button"
+                  className={`tool-tab ${sheetTab === 'local' ? 'active' : ''}`}
+                  onClick={() => { setSheetTab('local'); setError('') }}
+                >
+                  Local File (CSV / XLSX)
+                </button>
+              </div>
+
+              {/* ── Google Sheet tab ── */}
+              {sheetTab === 'google' ? (
+                <>
+                  <p className="tool-panel-description">
+                    Load a Google Sheet using its URL or spreadsheet ID and preview the tabular data.
+                  </p>
+                  <form className="tool-panel-form" onSubmit={handleLoadGoogleSheet}>
+                    <label htmlFor="sheet-url-input">Sheet URL or ID</label>
+                    <input
+                      id="sheet-url-input"
+                      type="text"
+                      placeholder="https://docs.google.com/spreadsheets/d/.../edit"
+                      value={sheetUrlOrId}
+                      onChange={(e) => setSheetUrlOrId(e.target.value)}
+                      disabled={isSheetLoading}
+                    />
+                    <button type="submit" disabled={isSheetLoading} className="tool-submit-button">
+                      {isSheetLoading ? 'Loading...' : 'Load Sheet'}
+                    </button>
+                  </form>
+
+                  <form className="tool-panel-form" onSubmit={handleAskGoogleSheet}>
+                    <label htmlFor="sheet-question-input">Question</label>
+                    <textarea
+                      id="sheet-question-input"
+                      rows={3}
+                      placeholder="Example: How many rows have Status as Completed?"
+                      value={sheetQuestion}
+                      onChange={(e) => setSheetQuestion(e.target.value)}
+                      disabled={isSheetQuestionLoading}
+                    />
+                    <button
+                      type="submit"
+                      disabled={isSheetQuestionLoading || !sheetUrlOrId.trim()}
+                      className="tool-submit-button"
+                    >
+                      {isSheetQuestionLoading ? 'Asking...' : 'Ask Question'}
+                    </button>
+                  </form>
+
+                  {sheetAnswer ? (
+                    <div className="tool-result">
+                      <h3>Answer</h3>
+                      <div className="tool-answer-markdown">
+                        <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={markdownUrlTransform}>{sheetAnswer}</ReactMarkdown>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {sheetPreview ? (
+                    <div className="tool-result">
+                      <h3>Rows ({sheetPreview.row_count})</h3>
+                      {Array.isArray(sheetPreview.rows) && sheetPreview.rows.length > 0 ? (
+                        <div className="tool-table-wrapper">
+                          <table className="tool-table-preview">
+                            <thead>
+                              <tr>
+                                {(sheetPreview.columns || []).map((column) => (
+                                  <th key={column}>{column}</th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {sheetPreview.rows.slice(0, 20).map((row, rowIdx) => (
+                                <tr key={rowIdx}>
+                                  {(sheetPreview.columns || []).map((column) => (
+                                    <td key={`${rowIdx}-${column}`}>{String(row?.[column] ?? '')}</td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : (
+                        <p>No rows found in the sheet.</p>
+                      )}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
+
+              {/* ── Local File tab ── */}
+              {sheetTab === 'local' ? (
+                <>
+                  <p className="tool-panel-description">
+                    Upload a local CSV or Excel (.xlsx) file and ask questions about it.
+                  </p>
+
+                  {/* Hidden native file input */}
+                  <input
+                    ref={localFileInputRef}
+                    type="file"
+                    accept=".csv,.xlsx,.xls"
+                    style={{ display: 'none' }}
+                    onChange={handleBrowseLocalFile}
+                  />
+
+                  <div className="tool-panel-form">
+                    <div className="local-file-browse-row">
+                      <button
+                        type="button"
+                        className="tool-submit-button"
+                        disabled={isLocalFileUploading}
+                        onClick={() => localFileInputRef.current?.click()}
+                      >
+                        {isLocalFileUploading ? 'Uploading...' : 'Browse'}
+                      </button>
+                      {localFile ? (
+                        <span className="local-file-name">
+                          {localFile.filename} — {localFile.row_count.toLocaleString()} rows
+                        </span>
+                      ) : (
+                        <span className="local-file-placeholder">No file selected</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {localFile ? (
+                    <>
+                      {/* Preview table */}
+                      {Array.isArray(localFile.rows) && localFile.rows.length > 0 ? (
+                        <div className="tool-result">
+                          <h3>Preview — {localFile.row_count.toLocaleString()} rows × {localFile.columns.length} columns</h3>
+                          <div className="tool-table-wrapper">
+                            <table className="tool-table-preview">
+                              <thead>
+                                <tr>
+                                  {(localFile.columns || []).map((col) => (
+                                    <th key={col}>{col}</th>
+                                  ))}
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {localFile.rows.slice(0, 20).map((row, rowIdx) => (
+                                  <tr key={rowIdx}>
+                                    {(localFile.columns || []).map((col) => (
+                                      <td key={`${rowIdx}-${col}`}>{String(row?.[col] ?? '')}</td>
+                                    ))}
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {/* Question form */}
+                      <form className="tool-panel-form" onSubmit={handleAskLocalFile}>
+                        <label htmlFor="local-file-question">Question</label>
+                        <textarea
+                          id="local-file-question"
+                          rows={3}
+                          placeholder="Example: What is the average salary?"
+                          value={localFileQuestion}
+                          onChange={(e) => setLocalFileQuestion(e.target.value)}
+                          disabled={isLocalFileQuerying}
+                        />
+                        <button
+                          type="submit"
+                          disabled={isLocalFileQuerying}
+                          className="tool-submit-button"
+                        >
+                          {isLocalFileQuerying ? 'Asking...' : 'Ask Question'}
+                        </button>
+                      </form>
+
+                      {localFileAnswer ? (
+                        <div className="tool-result">
+                          <h3>Answer</h3>
+                          <div className="tool-answer-markdown">
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={markdownUrlTransform}>{localFileAnswer}</ReactMarkdown>
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : null}
+                </>
+              ) : null}
+            </section>
+          ) : null}
+
+          {activeTool === 'research-digest' ? (
+            <section className="tool-panel" aria-label="Research Digest tool panel">
+              <div className="tool-panel-header">
+                <h2>Research Digest Agent</h2>
+                <button type="button" className="tool-close-button" onClick={handleCloseToolPanel}>
+                  Close
+                </button>
+              </div>
+              <p className="tool-panel-description">
+                Enter a topic and the agent will iteratively search arXiv, read paper sections, reflect on evidence sufficiency, and generate a structured digest.
+              </p>
+
+              <form className="tool-panel-form" onSubmit={handleStartResearchDigest}>
+                <label htmlFor="research-topic-input">Research Topic</label>
+                <textarea
+                  id="research-topic-input"
+                  rows={3}
+                  placeholder="Example: Retrieval-Augmented Generation evaluation methods for enterprise QA"
+                  value={researchTopic}
+                  onChange={(e) => setResearchTopic(e.target.value)}
+                  disabled={isResearchRunning}
+                />
+                <div className="tool-inline-row">
+                  <button type="submit" disabled={isResearchRunning} className="tool-submit-button">
+                    {isResearchRunning ? 'Running...' : 'Start Research'}
+                  </button>
+                  <button
+                    type="button"
+                    className="tool-secondary-button"
+                    disabled={!isResearchRunning}
+                    onClick={handleStopResearchDigest}
+                  >
+                    Stop
+                  </button>
+                  <button
+                    type="button"
+                    className="tool-secondary-button"
+                    disabled={!researchDigest || isExportingResearchPdf}
+                    onClick={handleExportResearchPdf}
+                  >
+                    {isExportingResearchPdf ? 'Exporting...' : 'Export PDF'}
+                  </button>
+                  <button
+                    type="button"
+                    className="tool-secondary-button"
+                    disabled={!researchDigest || isExportingResearchBibtex}
+                    onClick={handleExportResearchBibtex}
+                  >
+                    {isExportingResearchBibtex ? 'Exporting...' : 'Export BibTeX'}
+                  </button>
+                </div>
+              </form>
+
+              <div className="tool-result">
+                <h3>Status</h3>
+                {isResearchRunning ? (
+                  <>
+                    <p className="research-status-text">
+                      Research is in progress. We are reviewing sources and preparing a simple, reader-friendly brief.
+                    </p>
+                    <div className="research-status-bar">
+                      <div className="research-status-fill" style={{ width: `${researchProgressPercent}%` }} />
+                    </div>
+                    <p className="research-status-percent">{researchProgressPercent}%</p>
+                    {researchProgress.length ? (
+                      <div className="research-progress-list" aria-live="polite">
+                        {researchProgress.slice(-10).map((event, idx) => (
+                          <div className="research-progress-item" key={`${event.phase}-${idx}-${event.message}`}>
+                            <div className="research-phase">{event.phase}</div>
+                            <div>
+                              <div>{event.message}</div>
+                              {event.details && Object.keys(event.details).length ? (
+                                <div className="research-progress-details">
+                                  {Object.entries(event.details).map(([key, value]) => (
+                                    <span className="research-progress-detail" key={`${key}-${String(value)}`}>
+                                      <strong>{key}:</strong> {typeof value === 'object' ? JSON.stringify(value) : String(value)}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : null}
+                  </>
+                ) : (
+                  <p>Enter a topic and click Start Research to generate a plain-language digest.</p>
+                )}
+              </div>
+
+              {researchDigest ? (
+                <div className="tool-result">
+                  <h3>News Brief</h3>
+                  <div className="tool-answer-markdown">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={markdownUrlTransform}>
+                      {researchDigest.executive_summary || ''}
+                    </ReactMarkdown>
+                  </div>
+
+                  <h3>Key Takeaways</h3>
+                  <ul className="research-list">
+                    {(researchDigest.key_findings || []).map((item, idx) => (
+                      <li key={`finding-${idx}`}>{item}</li>
+                    ))}
+                  </ul>
+
+                  <h3>Confidence</h3>
+                  <p>{researchDigest.evidence_assessment}</p>
+
+                  <details className="research-details-block">
+                    <summary>Sources and Technical Details</summary>
+
+                    <p><strong>Method:</strong> {researchDigest.methodology_notes}</p>
+
+                    <h3>Citations ({(researchDigest.citations || []).length})</h3>
+                    {(researchDigest.citations || []).length ? (
+                      <div className="tool-table-wrapper">
+                        <table className="tool-table-preview">
+                          <thead>
+                            <tr>
+                              <th>Citation</th>
+                              <th>Title</th>
+                              <th>Authors</th>
+                              <th>Year</th>
+                              <th>DOI</th>
+                              <th>Published</th>
+                              <th>arXiv ID</th>
+                              <th>Relevance</th>
+                              <th>PDF</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {researchDigest.citations.map((citation, idx) => (
+                              <tr key={`citation-${idx}`}>
+                                <td>{citation.citation_id || `C${idx + 1}`}</td>
+                                <td>{citation.title}</td>
+                                <td>{(citation.authors || []).join(', ')}</td>
+                                <td>{citation.year || '-'}</td>
+                                <td>{citation.doi || '-'}</td>
+                                <td>{citation.published}</td>
+                                <td>{citation.arxiv_id}</td>
+                                <td>{citation.relevance_score ?? '-'}</td>
+                                <td>
+                                  <a href={citation.pdf_url} target="_blank" rel="noreferrer">
+                                    Open PDF
+                                  </a>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : (
+                      <p>No citations were gathered.</p>
+                    )}
+
+                    <h3>References (APA)</h3>
+                    <ol className="research-list">
+                      {(researchDigest.citations || []).map((citation, idx) => (
+                        <li key={`apa-${idx}`}>{citation.apa_citation || citation.title}</li>
+                      ))}
+                    </ol>
+
+                    <h3>References (IEEE)</h3>
+                    <ol className="research-list">
+                      {(researchDigest.citations || []).map((citation, idx) => (
+                        <li key={`ieee-${idx}`}>{citation.ieee_citation || citation.title}</li>
+                      ))}
+                    </ol>
+                  </details>
+
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
           {error && <p className="error global-error">{error}</p>}
           {activeThreadId ? (
             <>
@@ -713,7 +1591,7 @@ export default function ChatPage({ user, onLogout }) {
                   <article key={`${message.role}-${index}`} className={`bubble ${message.role}`}>
                     <p className="role">{message.role === 'user' ? 'You' : 'Assistant'}</p>
                     <div className="content">
-                      <ReactMarkdown urlTransform={markdownUrlTransform}>{message.content}</ReactMarkdown>
+                      <ReactMarkdown remarkPlugins={[remarkGfm]} urlTransform={markdownUrlTransform}>{message.content}</ReactMarkdown>
                     </div>
                     {Array.isArray(message.attachments) && message.attachments.length > 0 ? (
                       <div className="message-attachments">
